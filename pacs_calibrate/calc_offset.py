@@ -1,3 +1,11 @@
+"""
+Class for calculating PACS/SPIRE zero-point offsets.
+
+Created: unknown, but progress on this was 2018-2019 and modern version was
+completed no later than summer 2019.
+"""
+__author__ = "Ramsey Karim"
+
 import numpy as np
 import matplotlib.pyplot as plt
 import os

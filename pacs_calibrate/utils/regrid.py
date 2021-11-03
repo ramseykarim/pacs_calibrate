@@ -1,3 +1,11 @@
+"""
+Regridding utility functions.
+
+Created: July 26, 2019 (approximately)
+"""
+__author__ = "Ramsey Karim"
+
+
 import numpy as np
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord, FK5, Angle
