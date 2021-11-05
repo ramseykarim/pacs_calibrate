@@ -168,12 +168,10 @@ class PlanckConfig:
     def component_filename(component_stub):
         """
         Get one of the Planck GNILC dust model component maps
-        :param component_stub:
-        :return:
+        :param component_stub: valid GNILC model component name
+        :return: string path to the FITS file
         """
-        return "{}COM_CompMap_Dust-GNILC-Model-{}_2048_R2.00.fits".format(
-            gnilc_directory, component_stub
-        )
+        return f"{gnilc_directory}COM_CompMap_Dust-GNILC-Model-{component_stub}_2048_R2.00.fits"
 
     hfi_rimo = planck_directory + "HFI_RIMO_R3.00.fits"
 

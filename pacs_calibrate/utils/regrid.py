@@ -9,14 +9,19 @@ __author__ = "Ramsey Karim"
 import numpy as np
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord, FK5, Angle
-from astropy import units
+from astropy import units as u
 
-try:
-    import healpy as hp
-except ModuleNotFoundError:
-    print("HEALPY MODULE NOT FOUND; continuing code anyway")
-    hp = None
-from scipy.interpolate import interpn, griddata
+# try:
+#     import healpy as hp
+# except ModuleNotFoundError:
+#     print("HEALPY MODULE NOT FOUND; continuing code anyway")
+#     hp = None
+# from scipy.interpolate import interpn, griddata
+
+import reproject
+from reproject import mosaicking
+
+
 
 """
 Functions for the outside world.
@@ -60,21 +65,16 @@ def healpix2fits(source_hp, target_fits_grid, target_fits_header,
         raise TypeError("Invalid method: {}".format(method))
 
 
-def open_healpix(filename, nest=False):
+def open_healpix(filename, **kwargs):
     """
-    Shortcut to opening a HEALPix map, so healpy need not be imported for a single call
+    Shortcut to opening a HEALPix map
     :param filename: string filename (with valid path) to HEALPix FITS file
-    :param nest: HEALPix nest parameter. True implies "NESTED" data ordering,
-        False implies "RING". Usually RING for the newer Planck Archive HEALPix maps.
-        If you open up the map with this function, try
-            the_map = this_module.open_healpix(filename, nest=False)
-            this_module.hp.mollview(the_map)
-            plt.show()  # with matplotlib.pyplot as plt
-        it will become very clear whether you have the right ordering.
-        The wrong ordering will be composed entirely of streaks/artifacts.
-    :return: healpy map object
+    :param kwargs: not used; for backwards compatibility
+    :return: HDU object
     """
-    return hp.read_map(filename, nest=nest)
+    with fits.open(filename) as hdul:
+        hdu = hdul[1] # HEALPix default is 1 (see `hdu_in` parameter description here: https://reproject.readthedocs.io/en/stable/api/reproject.reproject_from_healpix.html#reproject.reproject_from_healpix)
+    return hdu
 
 
 """
@@ -201,6 +201,10 @@ def calc_galactic_limits(target_fits_grid, target_fits_header):
     It's probably fine to get closer to 90, but I'd rather stay 5 degrees away.
     At any rate, I don't think we have any polar sources, since that's not where
     we should find lots of dust.
+
+    Nov 4, 2021: unfortunately, this doesn't work correctly for some reason.
+    Rather than try to debug it, I'm going to switch to reproject so that I
+    can blame bugs like this on them and not have to fix them myself.
     """
     if (l_min < 90) and (l_max > 270):
         printlims = lambda : f"{l_min:.2f}, {l_max:.2f}"
@@ -297,79 +301,61 @@ class HEALPix2FITS:
         This object can be reused with different source HEALPix maps.
         :param target_data: data array from target FITS
         :param target_header: header from target FITS
-        :param pixel_scale_arcsec: intermediate pixel scale in arcseconds.
+        :param pixel_scale: intermediate pixel scale in arcseconds.
             This will not be the final pixel scale; that is defined by target.
             This should reflect the approximate pixel scale of the HEALPix
             data. For example, Planck HFI maps are saved at a 75 arcsecond
             pixel scale.
+            This can be any Quantity equivalent to arcseconds, or an int/float
+            representing arcseconds
         """
         self.target_data = target_data
         self.target_head = target_header
-        self.pixel_scale = pixel_scale_arcsec
+        if hasattr(pixel_scale_arcsec, 'unit'):
+            self.pixel_scale = pixel_scale_arcsec
+        else:
+            self.pixel_scale = pixel_scale_arcsec * u.arcsec
+
         # Declare some instance variables to be set in prepare_projection
+        # TODO: DELETE these!
         self._projection = None
         self._b_src, self._l_src = None, None
         self._bl_target_pairs, self._pixel_list = None, None
+
+        # Intermediate grid descriptors (int. grid is at self.pixel_scale)
+        self._int_wcs = None
+        self._int_shape = None
+
         # Sets the above variables; used by the actual projection methods
+        # TODO: See if I actually need a setup function?
         self.prepare_projection()
+
         # Stores the intermediate image, and should be None when not in use
         self._intermediate = None
 
     def prepare_projection(self):
         """
-        Set up a healpy.projector.CartesianProj object with the appropriate
-        galactic l, b limits.
-        This object doesn't have any data, it's just a glorified (and terrible)
-        WCS-like object.
-        :return: healpy.projector.CartesianProj object, primed for target grid
+        SETUP FUNCTION, can rename
         """
-        box_lim_l, box_lim_b = calc_galactic_limits(self.target_data,
-                                                    self.target_head)
-        n_pix_l, n_pix_b = calc_pixel_count((box_lim_l, box_lim_b),
-                                            self.pixel_scale)
-        self._projection = hp.projector.CartesianProj(xsize=n_pix_l, ysize=n_pix_b,
-                                                      lonra=np.array(box_lim_l),
-                                                      latra=np.array(box_lim_b))
-        self._projection.set_flip('astro')
+        self._int_wcs, self._int_shape = mosaicking.find_optimal_celestial_wcs(
+            [(self.target_data, self.target_head),], resolution=self.pixel_scale
+        )
 
-        # Get the l and b grid arrays from which we will interpolate
-        # The intermediate image is a regular grid in l, b
-        self._l_src, self._b_src = make_lb_grid_arrays(self._projection)
-        # Get the target image pixel coordinates
-        self._pixel_list = make_ij_list(self.target_data.shape,
-                                        mask=(~np.isnan(self.target_data)))
-        # Convert image coordinates (pixels: row, col) to galactic coordinates
-        # Do not assume these are a structured grid in l, b
-        l_target, b_target = wcs2galactic(WCS(self.target_head), self._pixel_list)
-        # Note inversion of l, b: l is the 'x' axis, which takes the 'j' index
-        self._bl_target_pairs = np.stack([b_target, l_target], axis=1)
-        # These are probably quite large, so delete them
-        del l_target, b_target
-
-    def healpix_to_intermediate(self, source_hp, nest=False):
+    def healpix_to_intermediate(self, source_hp, **kwargs):
         """
         Project intermediate image at self.pixel_scale from healpix source.
-        Since healpy doesn't let you (easily) fully define a grid and then
-        interpolate to it, we have to play its little game and step through
-        this intermediate map.
+
         In self.intermediate_to_target, the intermediate map is mapped to
         the target grid.
+
         This map should fully encompass the target map.
         Sets self.intermediate to a numpy array, the image at self.pixel_scale
-        :param source_hp: HEALPix map, already opened in healpy
-        :param nest: nest parameter for healpy. See open_healpy for notes
+        :param source_hp: HDU containing HEALPix data
+        :param kwargs: not used; backwards compatibility
         """
-        # Get healpy "n_side" parameter
-        n_side = hp.get_nside(source_hp)
-
-        # Get vec2pix function to pass to CartesianProj.projmap
-        # Fun fact! The healpy documentation incorrectly defines
-        #   the type of vec2pix function needed by projmap! Terrible!
-        def vec2pix_func(*xyz):
-            return hp.pixelfunc.vec2pix(n_side, *xyz, nest=nest)
-
-        # Now project the HEALPix map using the CartesianProj
-        self._intermediate = self._projection.projmap(source_hp, vec2pix_func)
+        # Get first return value only, second one is footprint
+        self._intermediate = reproject.reproject_from_healpix(source_hp,
+            self._int_wcs, shape_out=self._int_shape)[0]
 
     def pop_intermediate(self):
         intermediate = self._intermediate
