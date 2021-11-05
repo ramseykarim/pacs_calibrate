@@ -62,6 +62,13 @@ def setup_fake_healpix(nside):
     return np.arange(nside)
 
 
+def print_array_like_image(arr):
+    """
+    Print an array out as if it were origin='lower'
+    """
+    print(arr[::-1, :])
+
+
 class TestBasicProject(unittest.TestCase):
 
     def test_HEALPix2FITS_init(self):
@@ -81,8 +88,8 @@ class TestBasicProject(unittest.TestCase):
         # the different npix should cause different values in the result map
         projector = regrid.HEALPix2FITS(*setup_target_inputs())
         values = []
-        for i in [0, 2, 4]:
-            npix = 12 * 8**i
+        for i in [1, 2, 4]:
+            npix = 12 * i**2
             projector.healpix_to_intermediate(setup_fake_healpix(npix))
             result = projector.pop_intermediate()
             # print(result)
@@ -127,5 +134,6 @@ class TestGalacticLongitude(unittest.TestCase):
         # use l,b = 0,0 and check for NaNs
         data, hdr = setup_target_inputs(good=False)
         projector = regrid.HEALPix2FITS(data, hdr)
-        result = projector.project(setup_fake_healpix(12))
+        result = projector.project(setup_fake_healpix(12 * 4**2))
+        print_array_like_image(result)
         self.assertTrue(not np.any(np.isnan(result)))
