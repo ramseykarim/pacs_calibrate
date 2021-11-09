@@ -383,15 +383,9 @@ class HEALPix2FITS:
         """
         if intermediate is None:
             intermediate = self._intermediate
-        # Interpolate. Invert the longitude order to be strictly increasing.
-        interp_values_list = interpn((self._b_src, self._l_src[::-1]),
-                                     intermediate[:, ::-1],
-                                     self._bl_target_pairs, method=method,
-                                     bounds_error=False, fill_value=np.nan)
-        interpolated_data = assign_to_pixels(interp_values_list,
-                                             self._pixel_list,
-                                             self.target_data.shape)
-        return interpolated_data
+        result = reproject.reproject_interp((intermediate, self._int_wcs),
+            self.target_head, shape_out=self.target_data.shape, return_footprint=False)
+        return result
 
     def project(self, source_hp, nest=False, method='nearest'):
         """

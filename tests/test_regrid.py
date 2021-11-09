@@ -149,7 +149,7 @@ class TestFullProject(unittest.TestCase):
         # Check that the final projection comes back in the same shape
         data, hdr = setup_target_inputs()
         projector = regrid.HEALPix2FITS(data, hdr)
-        result = projector.project(setup_fake_healpix(12))
+        result = projector.project(setup_fake_healpix(2))
         self.assertEqual(result.shape, data.shape)
 
 
@@ -159,6 +159,6 @@ class TestGalacticLongitude(unittest.TestCase):
         # use l,b = 0,0 and check for NaNs
         data, hdr = setup_target_inputs(good=False)
         projector = regrid.HEALPix2FITS(data, hdr)
-        result = projector.project(setup_fake_healpix(12 * 4**2))
+        result = projector.project(setup_fake_healpix(2))
         print_array_like_image(result)
         self.assertTrue(not np.any(np.isnan(result)))
