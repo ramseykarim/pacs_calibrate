@@ -17,7 +17,7 @@ import sys
 import os
 import argparse
 
-from scripts import calc_offset, modify_fits
+from pacs_calibrate import calc_offset, modify_fits
 # calc_offset, modify_fits = None, None
 
 bands = {70: "PACS70um", 160: "PACS160um", 250: "SPIRE250um", 350: "SPIRE350um", 500: "SPIRE500um"}
