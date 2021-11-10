@@ -37,13 +37,18 @@ def get_data_path():
     parser.add_argument('--calc', action='store_true', help="skip the assignment stage. No assignment dialog will be produced. Figures (if produced) will be saved to the formerly specified directory.")
     parser.add_argument('--assign', action='store_true', help="skip straight to the offset assignment. No calculations or diagnostic figures will be produced.")
     parser.add_argument('--beta', action='store_true', help="don't calibrate, just save the beta image and mask as fits files and quit.")
+    parser.add_argument('--quiet', '-q', action='count', default=0, help="make fewer diagnostic plots. If 2 or more -q flags, no plots are saved. By default, this code is verbose.")
+    parser.add_argument('--savefigdir', type=str, default='./', help="directory in which to save diagnostic images, if any (default: <current directory> ).")
     args = parser.parse_args()
     data_path = args.directory
 
     if not os.path.isabs(data_path):
         data_path = os.path.abspath(data_path)
     if not os.path.isdir(data_path):
-        raise RuntimeError(f"Invalid directory: {data_path}")
+        raise RuntimeError(f"Invalid data directory: {data_path}")
+
+    if not os.path.isdir(args.savefigdir):
+        raise RuntimeError(f"Invalid image directory: {args.savefigdir}")
 
     return data_path, args
 
@@ -145,7 +150,8 @@ if __name__ == "__main__":
         else:
             model = calc_offset.GNILCModel(pacs_flux_filename, target_bandpass=band_stub, **spire_filenames, save_beta_only=other_args.beta)
             if not other_args.beta:
-                derived_offset = model.get_offset(full_diagnostic=True, savedir=(data_path if other_args.calc else None))
+                diagnostic_kwargs = {'full_diagnostic': (other_args.quiet == 0), 'no_diagnostic': (other_args.quiet > 1)}
+                derived_offset = model.get_offset(savedir=(other_args.savefigdir if other_args.calc else None), **diagnostic_kwargs)
 
         # Handle the possibility that we want to save the images (done) and quit
         if other_args.calc or other_args.beta:

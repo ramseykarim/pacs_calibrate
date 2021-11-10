@@ -107,7 +107,8 @@ class GNILCModel:
             "gauss_fit": None,  # tuple() Gaussian fit parameters
             "mode": None,  # final mode determination, by some method
         }
-
+        # Matplotlib figures to save when get_offst is called
+        self.figs = []
         # Basic operations with reusable results
         self.accumulate_planck_masks()
         self.accumulate_spire_masks(spire250_filename, spire500_filename)
@@ -293,8 +294,7 @@ class GNILCModel:
         ax.imshow(debug_mask_2_int, origin='lower')
         ax.set_title(f"500um mask, NaNs highlighted")
 
-        fig.savefig(fig.canvas.get_window_title().replace(' ', '_') + "_" + self.target_bandpass_stub + '.png')
-        fig.clf()
+        self.figs.append(fig)
 
 
 
@@ -458,7 +458,7 @@ class GNILCModel:
         plt.xlabel("Pixel difference between predicted/observed (MJy/sr)")
         plt.ylabel("Histogram count")
         plt.legend()
-        return fig
+        self.figs.append(fig)
 
     def diagnostic_flux_map(self):
         """
@@ -495,7 +495,7 @@ class GNILCModel:
             self.target_bandpass_stub))
 
         plt.subplots_adjust(top=0.88, bottom=0.11, left=0.05, right=0.975, hspace=0.2, wspace=0.115)
-        return fig
+        self.figs.append(fig)
 
     def diagnostic_mask(self):
         """
@@ -506,9 +506,9 @@ class GNILCModel:
                    vmin=0, vmax=1, cmap='Greys_r')
         plt.colorbar()
         plt.title("Mask for Difference Image; Included if True (1)")
-        return fig
+        self.figs.append(fig)
 
-    def get_offset(self, no_diagnostic=False, full_diagnostic=False, savedir=None):
+    def get_offset(self, no_diagnostic=False, full_diagnostic=True, savedir=None):
         """
         Calculate and return the offset.
         Plot the histogram diagnostic unless no_diagnostic is True.
@@ -517,7 +517,7 @@ class GNILCModel:
         Returns the offset after the plots are closed. Raises an error
             if the offset is either NaN or unprecedentedly large.
         :param no_diagnostic: True if you do NOT want ANYTHING to plot
-        :param full_diagnostic: True if you want THREE plots
+        :param full_diagnostic: True if you want FOUR plots instead of TWO
         :return: offset calibration needed by target, in MJy/sr
         """
         offset = self.calculate_offset()
@@ -527,18 +527,18 @@ class GNILCModel:
         print("="*25)
         print("="*25)
         if not no_diagnostic:
-            figs = []
-            figs.append(self.diagnostic_difference_histogram())
+            self.diagnostic_difference_histogram()
             if full_diagnostic:
-                figs.append(self.diagnostic_flux_map())
-                figs.append(self.diagnostic_mask())
+                self.diagnostic_flux_map()
+                self.diagnostic_mask()
             if savedir is not None:
-                for fig in figs:
-                    savename = os.path.join(savedir, fig.canvas.get_window_title().replace(' ', '_') + "_" + self.target_bandpass_stub + '.png')
+                for fig in self.figs:
+                    savename = os.path.join(savedir, fig.canvas.manager.get_window_title().replace(' ', '_') + "_" + self.target_bandpass_stub + '.png')
                     fig.savefig(savename)
                     fig.clf()
             else:
                 plt.show()
+        self.figs = [] # clear the image list in case we call get_offset again
         if np.isnan(offset) or np.abs(offset) > 1e6:
             msg = "Apparent issue with the derived offset. "
             msg += "Check diagnostic plots with the full_diagnostic=True argument to this function."
