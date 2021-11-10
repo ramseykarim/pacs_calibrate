@@ -469,8 +469,10 @@ class GNILCModel:
         # First plot predicted data
         ax = plt.subplot(131)
         # Find appropriate color limits
-        fq, tq = visual_min_max(self.predicted_target_flux)
-        last_plot = plt.imshow(self.predicted_target_flux, origin='lower',
+        predicted_target_flux = self.predicted_target_flux.copy()
+        predicted_target_flux[np.isnan(self.target_data)] = np.nan
+        fq, tq = visual_min_max(predicted_target_flux)
+        last_plot = plt.imshow(predicted_target_flux, origin='lower',
                                vmin=fq, vmax=tq)
         fig.colorbar(last_plot, ax=ax)
         plt.title("GNILC Model Predicted Flux (GNILC resolution)")
