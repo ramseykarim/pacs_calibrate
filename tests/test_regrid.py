@@ -35,6 +35,8 @@ import numpy as np
 
 from astropy.io import fits
 
+import astropy_healpix
+
 from pacs_calibrate.utils import misc
 from pacs_calibrate.utils import regrid
 
@@ -59,7 +61,11 @@ def setup_fake_healpix(nside):
 
     This should return the same type of object as open_healpix()
     """
-    return np.arange(nside)
+    npix = astropy_healpix.nside_to_npix(nside)
+    col = fits.Column(name='number', format='I', array=np.arange(npix))
+    hdu = fits.TableHDU.from_columns([col])
+    hdu.header.update({'PIXTYPE': "HEALPIX", 'ORDERING': "RING", 'NSIDE': nside, 'NPIX': npix, 'COORDSYS': 'GALACTIC'})
+    return hdu
 
 
 def print_array_like_image(arr):
@@ -67,6 +73,23 @@ def print_array_like_image(arr):
     Print an array out as if it were origin='lower'
     """
     print(arr[::-1, :])
+
+
+class TestInputSetup(unittest.TestCase):
+
+    def test_fake_pacs(self):
+        data, hdr = setup_target_inputs()
+        self.assertEqual(data.ndim, 2)
+        self.assertTrue(isinstance(hdr, fits.Header))
+
+    def test_fake_healpix(self):
+        hdu = setup_fake_healpix(1)
+        data = hdu.data
+        nside = 1
+        print(hdu.header)
+        self.assertEqual(data.ndim, nside)
+        self.assertEqual(data.size, astropy_healpix.nside_to_npix(nside))
+
 
 
 class TestBasicProject(unittest.TestCase):
@@ -78,23 +101,21 @@ class TestBasicProject(unittest.TestCase):
 
     def test_healpix_to_intermediate_basic(self):
         projector = regrid.HEALPix2FITS(*setup_target_inputs())
-        projector.healpix_to_intermediate(setup_fake_healpix(12))
+        projector.healpix_to_intermediate(setup_fake_healpix(1))
         result = projector.pop_intermediate()
         # print(result)
         self.assertIsNotNone(result)
-
 
     def test_healpix_to_intermediate_intermediate(self):
         # the different npix should cause different values in the result map
         projector = regrid.HEALPix2FITS(*setup_target_inputs())
         values = []
-        for i in [1, 2, 4]:
-            npix = 12 * i**2
-            projector.healpix_to_intermediate(setup_fake_healpix(npix))
+        for nside in [1, 2, 4]:
+            projector.healpix_to_intermediate(setup_fake_healpix(nside))
             result = projector.pop_intermediate()
             # print(result)
             values.append(result[0, 0])
-            self.assertIsNotNone(result, msg=f"failed on npix = {npix}")
+            self.assertIsNotNone(result, msg=f"failed on nside = {nside}")
         self.assertNotEqual(values[0], values[1])
         self.assertNotEqual(values[0], values[2])
         self.assertNotEqual(values[1], values[2])
@@ -108,23 +129,27 @@ class TestBasicProject(unittest.TestCase):
             projector.healpix_to_intermediate(np.arange(npix))
 
 
+class TestAdvancedProject(unittest.TestCase):
+
     def test_healpix_to_intermediate_advanced(self):
         # Check that a larger target field demands a larger intermediate map
         array_sizes = []
         # pixel scales of 1 arcminute and 10 arcminutes
         for ps in [1, 10]:
             projector = regrid.HEALPix2FITS(*setup_target_inputs(pixel_scale=ps))
-            projector.healpix_to_intermediate(setup_fake_healpix(12))
+            projector.healpix_to_intermediate(setup_fake_healpix(1))
             # print(projector._intermediate.shape)
             array_sizes.append(projector.pop_intermediate().size)
         self.assertLess(array_sizes[0], array_sizes[1], msg=f"{array_sizes[0]} !< {array_sizes[1]}")
 
 
+class TestFullProject(unittest.TestCase):
+
     def test_project(self):
         # Check that the final projection comes back in the same shape
         data, hdr = setup_target_inputs()
         projector = regrid.HEALPix2FITS(data, hdr)
-        result = projector.project(setup_fake_healpix(12))
+        result = projector.project(setup_fake_healpix(2))
         self.assertEqual(result.shape, data.shape)
 
 
@@ -134,6 +159,6 @@ class TestGalacticLongitude(unittest.TestCase):
         # use l,b = 0,0 and check for NaNs
         data, hdr = setup_target_inputs(good=False)
         projector = regrid.HEALPix2FITS(data, hdr)
-        result = projector.project(setup_fake_healpix(12 * 4**2))
+        result = projector.project(setup_fake_healpix(2))
         print_array_like_image(result)
         self.assertTrue(not np.any(np.isnan(result)))
