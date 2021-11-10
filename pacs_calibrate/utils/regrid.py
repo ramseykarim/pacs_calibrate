@@ -10,6 +10,7 @@ import numpy as np
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord, FK5, Angle
 from astropy import units as u
+from astropy.io import fits
 
 # try:
 #     import healpy as hp
@@ -34,8 +35,8 @@ def open_healpix(filename, **kwargs):
     :param kwargs: not used; for backwards compatibility
     :return: HDU object
     """
-    with fits.open(filename) as hdul:
-        hdu = hdul[1] # HEALPix default is 1 (see `hdu_in` parameter description here: https://reproject.readthedocs.io/en/stable/api/reproject.reproject_from_healpix.html#reproject.reproject_from_healpix)
+    hdul = fits.open(filename)
+    hdu = hdul[1] # HEALPix default is 1 (see `hdu_in` parameter description here: https://reproject.readthedocs.io/en/stable/api/reproject.reproject_from_healpix.html#reproject.reproject_from_healpix)
     return hdu
 
 
