@@ -9,6 +9,7 @@ __author__ = "Ramsey Karim"
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import datetime
 
 from astropy.io.fits import getdata as fits_getdata
 from astropy.io import fits
@@ -508,6 +509,46 @@ class GNILCModel:
         plt.title("Mask for Difference Image; Included if True (1)")
         self.figs.append(fig)
 
+    def save_model(self, savedir=None):
+        """
+        Save the predicted flux and difference maps as FITS files.
+        The saved FITS images will be at the target pixel scale and 5' Planck
+        resolution
+        This function is meant to be called by the user, and is not called
+        automatically anywhere in this program.
+        :param savedir: valid path to save these maps to
+        """
+        self.predicted_target_flux
+        self.difference
+        predicted_hdr = self.target_wcs.to_header()
+        difference_hdr = self.target_wcs.to_header()
+        def update_header(hdr):
+            hdr['BUNIT'] = "MJy/sr"
+            hdr['AUTHOR'] = "Ramsey Karim"
+            hdr['CREATOR'] = ".".join(__file__.split('/')[:-2]) + ".save_model"
+            hdr['DATE'] = f"Created: {datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat()}"
+            hdr['COMMENT'] = self.target_bandpass_stub
+            hdr['COMMENT'] = "5 arcminute beam from Planck GNILC dust model"
+        update_header(predicted_hdr)
+        update_header(difference_hdr)
+        predicted_hdr['COMMENT'] = "Planck GNILC model used to predict flux in band"
+        difference_hdr['COMMENT'] = "PREDICTED minus OBSERVED flux in band"
+        predicted_hdu = fits.PrimaryHDU(data=self.predicted_target_flux, header=predicted_hdr)
+        difference_hdu = fits.PrimaryHDU(data=self.difference, header=difference_hdr)
+        if savedir is None:
+            savedir = "./"
+            print(f"Warning: no path specified, saving FITS files to working directory {os.getcwd()}")
+        predicted_fn = os.path.join(savedir, f"{self.target_bandpass_stub}-PREDICTED.fits")
+        difference_fn = os.path.join(savedir, f"{self.target_bandpass_stub}-DIFFERENCE.fits")
+        predicted_hdu.writeto(predicted_fn)
+        difference_hdu.writeto(difference_fn)
+        print("Wrote predicted and difference to FITS files.")
+
+    """
+    IMPORTANT FUNCTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    This should be called by the user to do the heavy lifting and calculate the
+    offset
+    """
     def get_offset(self, no_diagnostic=False, full_diagnostic=True, savedir=None):
         """
         Calculate and return the offset.
@@ -518,6 +559,7 @@ class GNILCModel:
             if the offset is either NaN or unprecedentedly large.
         :param no_diagnostic: True if you do NOT want ANYTHING to plot
         :param full_diagnostic: True if you want FOUR plots instead of TWO
+        :param savedir: valid path to save these images to
         :return: offset calibration needed by target, in MJy/sr
         """
         offset = self.calculate_offset()
