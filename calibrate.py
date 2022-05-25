@@ -39,6 +39,7 @@ def get_data_path():
     parser.add_argument('--beta', action='store_true', help="don't calibrate, just save the beta image and mask as fits files and quit.")
     parser.add_argument('--quiet', '-q', action='count', default=0, help="make fewer diagnostic plots. If 2 or more -q flags, no plots are saved. By default, this code is verbose.")
     parser.add_argument('--savefigdir', type=str, default='./', help="directory in which to save diagnostic images, if any (default: <current directory> ).")
+    parser.add_argument('--maskopt', '-m', type=int, default=0, help="option for masking. Default is 0, all usual masks. 1 means do not mask out the lowest 20\% of PACS flux (or whatever this band is)")
     args = parser.parse_args()
     data_path = args.directory
 
@@ -148,7 +149,7 @@ if __name__ == "__main__":
             print("Skipping to assignment. No calculations will be made.")
             derived_offset = -99.99
         else:
-            model = calc_offset.GNILCModel(pacs_flux_filename, target_bandpass=band_stub, **spire_filenames, save_beta_only=other_args.beta)
+            model = calc_offset.GNILCModel(pacs_flux_filename, target_bandpass=band_stub, **spire_filenames, save_beta_only=other_args.beta, mask_opt=other_args.maskopt)
             if not other_args.beta:
                 diagnostic_kwargs = {'full_diagnostic': (other_args.quiet == 0), 'no_diagnostic': (other_args.quiet > 1)}
                 derived_offset = model.get_offset(savedir=(other_args.savefigdir if other_args.calc else None), **diagnostic_kwargs)

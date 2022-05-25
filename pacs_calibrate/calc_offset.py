@@ -25,7 +25,7 @@ class GNILCModel:
     band_dictionary_template = {'F545': None, 'F857': None}
 
     def __init__(self, *target_args, target_bandpass='PACS160um', extension=0,
-        pixel_scale_arcsec=75, mask_constraint=(0.9, 1.1),
+        pixel_scale_arcsec=75, mask_constraint=(0.9, 1.1), mask_opt=0,
         spire250_filename=None, spire500_filename=None,
         save_beta_only=False):
         """
@@ -58,6 +58,11 @@ class GNILCModel:
             fractional agreement between the predicted and observed
             HFI fluxes. These constraints are used to make masks for the
             offset derivation.
+        :param mask_opt: int, masking option. 0 is default (all the usual
+            masks, which include the GNILC self-agreement mask, the high
+            500 micron mask, and the low PACS (or this band) mask)
+            opt 1 gets rid of the low PACS/this band mask.
+            Other options can be added in the future.
         :param save_beta_only: intercept the whole bandpass calculation thingy
             and just save the mask and the beta map gridded to the target.
         """
@@ -95,6 +100,7 @@ class GNILCModel:
         self.predicted_target_flux = None
         self.mask = None
         self.mask_constraint = mask_constraint
+        self.mask_opt = mask_opt
         self.difference = None
         self.stats = {
             # If value is string or Exception, indicates/describes error
@@ -188,6 +194,9 @@ class GNILCModel:
         This final mask is used with the difference image to generate
         the offset statistics.
         """
+        if self.mask_opt == 2:
+            # Skip the Planck mask entirely
+            return
         for band_stub in self.masks:
             self.generate_planck_ratio_mask(band_stub)
         planck_mask = np.all(np.array(list(self.masks.values())), axis=0)
@@ -195,6 +204,12 @@ class GNILCModel:
             self.mask = planck_mask
         else:
             self.mask &= planck_mask
+
+        fig = plt.figure("GNILC Trust Mask")
+        plt.imshow(planck_mask, origin='lower')
+        plt.title("1s are INCLUDED")
+        plt.colorbar()
+        self.figs.append(fig)
 
     def accumulate_spire_masks(self, spire250_filename, spire500_filename):
         """
@@ -223,6 +238,11 @@ class GNILCModel:
         spire_data = fits_getdata(spire500_filename)
         # Make the finite mask from both images
         finite_mask = np.isfinite(spire_data) & np.isfinite(self.target_data)
+        # Always include the finite mask
+        if self.mask is None:
+            self.mask = finite_mask
+        else:
+            self.mask &= finite_mask
         # Mask out low PACS emission in this band
         pacs_lo, pacs_hi = flquantiles(self.target_data[finite_mask].flatten(), 5)
         pacs_mask = (self.target_data > pacs_lo)
@@ -247,10 +267,12 @@ class GNILCModel:
         mask500 = (spire_data < spire_hi)
         debug_mask_2 = (spire_data > spire_hi)
 
-        if self.mask is None:
-            self.mask = (pacs_mask & mask500)
-        else:
+        if self.mask_opt == 0:
             self.mask &= (pacs_mask & mask500)
+        elif self.mask_opt == 1 or self.mask_opt == 2:
+            # No low-20% PACS/this_band mask
+            self.mask &= mask500
+
 
         # # DEBUG: just plotting some stuff to learn about the mask
         fig = plt.figure("Flux and NaN Masks", figsize=(18, 9))
@@ -501,7 +523,7 @@ class GNILCModel:
         """
         Plot the mask used to calculate difference statistics
         """
-        fig = plt.figure("GNILC Trust Mask")
+        fig = plt.figure("Full Mask")
         plt.imshow(self.mask.astype(int), origin='lower',
                    vmin=0, vmax=1, cmap='Greys_r')
         plt.colorbar()
