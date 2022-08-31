@@ -28,7 +28,7 @@ class GNILCModel:
     def __init__(self, *target_args, target_bandpass='PACS160um', extension=0,
         pixel_scale_arcsec=75, mask_constraint=(0.9, 1.1), mask_opt=0,
         spire250_filename=None, spire500_filename=None,
-        save_beta_only=False):
+        save_beta_only=False, save_masks=False):
         """
         Object representing the GNILC dust model and packaging its capability
         to predict flux in various instrument bands.
@@ -66,6 +66,9 @@ class GNILCModel:
             Other options can be added in the future.
         :param save_beta_only: intercept the whole bandpass calculation thingy
             and just save the mask and the beta map gridded to the target.
+        :param save_masks: save the all mask layers as FITS files.
+            These masks are already saved (default settings) as PNGs, so this
+            will save the same masks to FITS files in addition to the PNGs.
         """
         if len(target_args) == 1 and type(target_args[0]) == str:
             # String file path
@@ -117,10 +120,11 @@ class GNILCModel:
         # Matplotlib figures to save when get_offst is called
         self.figs = []
         # Basic operations with reusable results
-        self.accumulate_planck_masks()
-        self.accumulate_spire_masks(spire250_filename, spire500_filename)
+        self.accumulate_planck_masks(save_mask_layer=save_masks)
+        self.accumulate_spire_masks(spire250_filename, spire500_filename,
+            save_mask_layer=save_masks)
         if save_beta_only:
-            self.intercept_and_save_beta_and_mask()
+            self.save_beta_map()
         else:
             self.difference_to_target()
             self.offset_statistics()
@@ -187,13 +191,16 @@ class GNILCModel:
         lo, hi = self.mask_constraint
         self.masks[planck_band_stub] = np.isfinite(ratio) & (ratio > lo) & (ratio < hi)
 
-    def accumulate_planck_masks(self):
+    def accumulate_planck_masks(self, save_mask_layer=False):
         """
         Generate the Planck observed-to-predicted ratio masks for all
         bands listed in the band_dictionary_template.
         Take a bitwise AND of the masks to create the final mask.
-        This final mask is used with the difference image to generate
-        the offset statistics.
+        This mask will be a layer in the final mask used with the difference
+        image to generate the offset statistics.
+        :param save_mask_layer: save this layer of the mask as a FITS file.
+            Default is no saving. Can be useful for debugging or using the mask
+            for other purposes.
         """
         if self.mask_opt == 2:
             # Skip the Planck mask entirely
@@ -212,7 +219,17 @@ class GNILCModel:
         plt.colorbar()
         self.figs.append(fig)
 
-    def accumulate_spire_masks(self, spire250_filename, spire500_filename):
+        if save_mask_layer:
+            mask_hdr = self.target_wcs.to_header()
+            mask_hdr['COMMENT'] = "Planck GNILC mask from calc_offset.py"
+            mask_hdu = fits.PrimaryHDU(data=planck_mask.astype(float), header=mask_hdr)
+            mask_hdu.writeto(os.path.join(savedir, "calib-gnilc-mask.fits"))
+            print("Wrote GNILC mask to FITS.")
+
+
+
+    def accumulate_spire_masks(self, spire250_filename, spire500_filename,
+        save_mask_layer=False):
         """
         Create additional masks based on the (160 or 250um) and 500um flux.
         The 500um mask (masking out high fluxes) should aid in eliminating
@@ -227,6 +244,9 @@ class GNILCModel:
             This function does not check if WCS matches.
         :param spire500_filename: complete filename of the SPIRE 500um flux
             FITS file. Same restrictions as for 250um.
+        :param save_mask_layer: save these layers of the mask as FITS files.
+            Default is no saving. Can be useful for debugging or using the masks
+            for other purposes.
 
         At present, this uses THIS BAND instead of SPIRE 250um. The reason
         for this is that this mask gives roughly the same information
@@ -318,6 +338,28 @@ class GNILCModel:
         ax.set_title(f"500um mask, NaNs highlighted")
 
         self.figs.append(fig)
+
+        # Save some masks as FITS
+        if save_mask_layer:
+            # Mask 1, "This band" > lowest 20%
+            # I know the variable says PACS mask, it's usually PACS because we
+            # usually only do this for PACS. But it's "This band"
+            mask_hdr = self.target_wcs.to_header()
+            mask_hdr['COMMENT'] = f"{self.target_bandpass_stub} > 20% mask from calc_offset.py"
+            mask_hdr['COMMENT'] = "This mask is False in the lowest quintile."
+            mask_hdr['COMMENT'] = "This is to exclude probable areas of low signal to noise."
+            mask_hdu = fits.PrimaryHDU(data=pacs_mask.astype(float), header=mask_hdr)
+            mask_hdu.writeto(os.path.join(savedir, f"calib-{self.target_bandpass_stub}gt20-mask.fits"))
+            # Mask 2, SPIRE500 < highest 20%
+            mask_hdr = self.target_wcs.to_header()
+            mask_hdr['COMMENT'] = "SPIRE500um < 20% mask from calc_offset.py"
+            mask_hdr['COMMENT'] = "This mask is False in the highest quintile."
+            mask_hdr['COMMENT'] = "This is to exclude probable areas of high column density."
+            mask_hdu = fits.PrimaryHDU(data=pacs_mask.astype(float), header=mask_hdr)
+            mask_hdu.writeto(os.path.join(savedir, "calib-SPIRE500umlt20-mask.fits"))
+
+            print(f"Wrote {self.target_bandpass_stub} and SPIRE500um mask layers to FITS.")
+
 
 
 
@@ -609,22 +651,33 @@ class GNILCModel:
             raise RuntimeError(msg)
         return offset
 
-    def intercept_and_save_beta_and_mask(self):
+    def save_beta_map(self):
         """
-        May 26, 2021
-        Regrid the beta map to the target grid and save that and the (full) mask
-        to .fits files
+        May 26, 2021 / August 31, 2022
+        Regrid the beta map to the target grid and save that to FITS.
+        This used to be lumped in with saving the full mask, but that doesn't
+        make much sense and there are reasons to want only one or the other.
+        I split it off on August 31, 2022.
         """
         beta_regrid = self.projector.intermediate_to_target(intermediate=self.beta[0, :, :])
         beta_hdr = self.target_wcs.to_header()
         beta_hdr['COMMENT'] = "Planck GNILC spectral index"
         beta_hdu = fits.PrimaryHDU(data=beta_regrid, header=beta_hdr)
-        beta_hdu.writeto("planck-beta.fits")
+        beta_hdu.writeto(os.path.join(savedir, "planck-beta.fits"))
+        print("Wrote spectral index map to FITS.")
+
+    def save_full_mask(self):
+        """
+        May 26, 2021
+        Save the full mask to FITS file.
+        Updated August 31, 2022: split of the beta map saving to separate
+        function
+        """
         mask_hdr = self.target_wcs.to_header()
-        mask_hdr['COMMENT'] = "Mask from calc_offset.py"
+        mask_hdr['COMMENT'] = "Full mask from calc_offset.py"
         mask_hdu = fits.PrimaryHDU(data=self.mask.astype(float), header=mask_hdr)
-        mask_hdu.writeto("calib-mask.fits")
-        print("Wrote 2 fits files.")
+        mask_hdu.writeto(os.path.join(savedir, "calib-full-mask.fits"))
+        print("Wrote full mask to FITS.")
 
 """
 Helper functions
