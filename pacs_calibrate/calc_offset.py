@@ -122,7 +122,10 @@ class GNILCModel:
             "mode": None,  # final mode determination, by some method
         }
         # Matplotlib figures to save when get_offst is called
-        self.figs = []
+        # List contains tuples of (Figure, string title)
+        # Title is needed for saving over SSH, where we cannot retrieve the
+        # window name
+        self.figs_and_titles = []
         self.default_savedir = default_savedir
         # Basic operations with reusable results
         self.accumulate_planck_masks(save_mask_layer=save_masks)
@@ -218,11 +221,12 @@ class GNILCModel:
         else:
             self.mask &= planck_mask
 
-        fig = plt.figure("GNILC Trust Mask")
+        fig_title = "GNILC Trust Mask"
+        fig = plt.figure(fig_title)
         plt.imshow(planck_mask, origin='lower')
         plt.title("1s are INCLUDED")
         plt.colorbar()
-        self.figs.append(fig)
+        self.figs_and_titles.append((fig, fig_title))
 
         if save_mask_layer:
             mask_hdr = self.target_wcs.to_header()
@@ -301,7 +305,8 @@ class GNILCModel:
 
 
         # # DEBUG: just plotting some stuff to learn about the mask
-        fig = plt.figure("Flux and NaN Masks", figsize=(18, 9))
+        fig_title = "Flux and NaN Masks"
+        fig = plt.figure(fig_title, figsize=(18, 9))
         N_finite = np.sum(finite_mask)
         print("Finite: ", N_finite)
         N_this = np.sum(pacs_mask[finite_mask])
@@ -342,7 +347,7 @@ class GNILCModel:
         ax.imshow(debug_mask_2_int, origin='lower')
         ax.set_title(f"500um mask, NaNs highlighted")
 
-        self.figs.append(fig)
+        self.figs_and_titles.append((fig, fig_title))
 
         # Save some masks as FITS
         if save_mask_layer:
@@ -493,7 +498,8 @@ class GNILCModel:
         """
         Plot the difference image histogram with overlaid Gaussian fit.
         """
-        fig = plt.figure("Difference Histogram", figsize=(9, 5.5))
+        fig_title = "Difference Histogram"
+        fig = plt.figure(fig_title, figsize=(9, 5.5))
         # Plot the histogram itself
         plt.plot(*self.stats['hist_xy'], '-', color=(.1, .5, .1),
                  linewidth=3, label="$F_{GNILC} - F_{obs}$")
@@ -528,14 +534,15 @@ class GNILCModel:
         plt.xlabel("Pixel difference between predicted/observed (MJy/sr)")
         plt.ylabel("Histogram count")
         plt.legend()
-        self.figs.append(fig)
+        self.figs_and_titles.append((fig, fig_title))
 
     def diagnostic_flux_map(self):
         """
         Plot the predicted and observed flux.
         The observed flux is shown at native, not GNILC, resolution.
         """
-        fig = plt.figure("Predicted and Observed Flux", figsize=(16, 6.5))
+        fig_title = "Predicted and Observed Flux"
+        fig = plt.figure(fig_title, figsize=(16, 6.5))
         # First plot predicted data
         ax = plt.subplot(131)
         # Find appropriate color limits
@@ -565,18 +572,19 @@ class GNILCModel:
             self.target_bandpass_stub))
 
         plt.subplots_adjust(top=0.88, bottom=0.11, left=0.05, right=0.975, hspace=0.2, wspace=0.115)
-        self.figs.append(fig)
+        self.figs_and_titles.append((fig, fig_title))
 
     def diagnostic_mask(self):
         """
         Plot the mask used to calculate difference statistics
         """
-        fig = plt.figure("Full Mask")
+        fig_title = "Full Mask"
+        fig = plt.figure(fig_title)
         plt.imshow(self.mask.astype(int), origin='lower',
                    vmin=0, vmax=1, cmap='Greys_r')
         plt.colorbar()
         plt.title("Mask for Difference Image; Included if True (1)")
-        self.figs.append(fig)
+        self.figs_and_titles.append((fig, fig_title))
 
     def save_model(self, savedir=None):
         """
@@ -643,13 +651,17 @@ class GNILCModel:
                 self.diagnostic_flux_map()
                 self.diagnostic_mask()
             if savedir is not None:
-                for fig in self.figs:
-                    savename = os.path.join(savedir, fig.canvas.manager.get_window_title().replace(' ', '_') + "_" + self.target_bandpass_stub + '.png')
+                for fig, fig_title in self.figs_and_titles:
+                    # I used to call fig.canvas.manager.get_window_title()
+                    # but this returns 'image' over SSH regardless of what was
+                    # set in the plt.figure() call
+                    savename = os.path.join(savedir, fig_title.replace(' ', '_') + "_" + self.target_bandpass_stub + '.png')
+                    print("Saving figure to", savename)
                     fig.savefig(savename)
                     fig.clf()
             else:
                 plt.show()
-        self.figs = [] # clear the image list in case we call get_offset again
+        self.figs_and_titles = [] # clear the image list in case we call get_offset again
         if np.isnan(offset) or np.abs(offset) > 1e6:
             msg = "Apparent issue with the derived offset. "
             msg += "Check diagnostic plots with the full_diagnostic=True argument to this function."
