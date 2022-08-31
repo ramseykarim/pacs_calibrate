@@ -358,14 +358,14 @@ class GNILCModel:
             mask_hdr['COMMENT'] = f"{self.target_bandpass_stub} > 20% mask from calc_offset.py"
             mask_hdr['COMMENT'] = "This mask is False in the lowest quintile."
             mask_hdr['COMMENT'] = "This is to exclude probable areas of low signal to noise."
-            mask_hdu = fits.PrimaryHDU(data=pacs_mask.astype(float), header=mask_hdr)
+            mask_hdu = fits.PrimaryHDU(data=(~debug_mask_1).astype(float), header=mask_hdr)
             mask_hdu.writeto(os.path.join(self.default_savedir, f"calib-{self.target_bandpass_stub}gt20-mask.fits"))
             # Mask 2, SPIRE500 < highest 20%
             mask_hdr = self.target_wcs.to_header()
             mask_hdr['COMMENT'] = "SPIRE500um < 20% mask from calc_offset.py"
             mask_hdr['COMMENT'] = "This mask is False in the highest quintile."
             mask_hdr['COMMENT'] = "This is to exclude probable areas of high column density."
-            mask_hdu = fits.PrimaryHDU(data=mask500.astype(float), header=mask_hdr)
+            mask_hdu = fits.PrimaryHDU(data=(~debug_mask_2).astype(float), header=mask_hdr)
             mask_hdu.writeto(os.path.join(self.default_savedir, "calib-SPIRE500umlt20-mask.fits"))
 
             print(f"Wrote {self.target_bandpass_stub} and SPIRE500um mask layers to FITS.")
