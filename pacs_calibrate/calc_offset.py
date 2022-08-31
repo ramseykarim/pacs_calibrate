@@ -28,7 +28,8 @@ class GNILCModel:
     def __init__(self, *target_args, target_bandpass='PACS160um', extension=0,
         pixel_scale_arcsec=75, mask_constraint=(0.9, 1.1), mask_opt=0,
         spire250_filename=None, spire500_filename=None,
-        save_beta_only=False, save_masks=False):
+        save_beta_only=False, save_masks=False,
+        default_savedir="./"):
         """
         Object representing the GNILC dust model and packaging its capability
         to predict flux in various instrument bands.
@@ -69,6 +70,9 @@ class GNILCModel:
         :param save_masks: save the all mask layers as FITS files.
             These masks are already saved (default settings) as PNGs, so this
             will save the same masks to FITS files in addition to the PNGs.
+        :param default_savedir: fallback location for saving maps and figures.
+            Default is working directory "./", but can be set to other things.
+            Overridden by certain method arguments.
         """
         if len(target_args) == 1 and type(target_args[0]) == str:
             # String file path
@@ -119,6 +123,7 @@ class GNILCModel:
         }
         # Matplotlib figures to save when get_offst is called
         self.figs = []
+        self.default_savedir = default_savedir
         # Basic operations with reusable results
         self.accumulate_planck_masks(save_mask_layer=save_masks)
         self.accumulate_spire_masks(spire250_filename, spire500_filename,
@@ -223,7 +228,7 @@ class GNILCModel:
             mask_hdr = self.target_wcs.to_header()
             mask_hdr['COMMENT'] = "Planck GNILC mask from calc_offset.py"
             mask_hdu = fits.PrimaryHDU(data=planck_mask.astype(float), header=mask_hdr)
-            mask_hdu.writeto(os.path.join(savedir, "calib-gnilc-mask.fits"))
+            mask_hdu.writeto(os.path.join(self.default_savedir, "calib-gnilc-mask.fits"))
             print("Wrote GNILC mask to FITS.")
 
 
@@ -349,14 +354,14 @@ class GNILCModel:
             mask_hdr['COMMENT'] = "This mask is False in the lowest quintile."
             mask_hdr['COMMENT'] = "This is to exclude probable areas of low signal to noise."
             mask_hdu = fits.PrimaryHDU(data=pacs_mask.astype(float), header=mask_hdr)
-            mask_hdu.writeto(os.path.join(savedir, f"calib-{self.target_bandpass_stub}gt20-mask.fits"))
+            mask_hdu.writeto(os.path.join(self.default_savedir, f"calib-{self.target_bandpass_stub}gt20-mask.fits"))
             # Mask 2, SPIRE500 < highest 20%
             mask_hdr = self.target_wcs.to_header()
             mask_hdr['COMMENT'] = "SPIRE500um < 20% mask from calc_offset.py"
             mask_hdr['COMMENT'] = "This mask is False in the highest quintile."
             mask_hdr['COMMENT'] = "This is to exclude probable areas of high column density."
             mask_hdu = fits.PrimaryHDU(data=pacs_mask.astype(float), header=mask_hdr)
-            mask_hdu.writeto(os.path.join(savedir, "calib-SPIRE500umlt20-mask.fits"))
+            mask_hdu.writeto(os.path.join(self.default_savedir, "calib-SPIRE500umlt20-mask.fits"))
 
             print(f"Wrote {self.target_bandpass_stub} and SPIRE500um mask layers to FITS.")
 
@@ -600,7 +605,7 @@ class GNILCModel:
         predicted_hdu = fits.PrimaryHDU(data=self.predicted_target_flux, header=predicted_hdr)
         difference_hdu = fits.PrimaryHDU(data=self.difference, header=difference_hdr)
         if savedir is None:
-            savedir = "./"
+            savedir = self.default_savedir
             print(f"Warning: no path specified, saving FITS files to working directory {os.getcwd()}")
         predicted_fn = os.path.join(savedir, f"{self.target_bandpass_stub}-PREDICTED.fits")
         difference_fn = os.path.join(savedir, f"{self.target_bandpass_stub}-DIFFERENCE.fits")
@@ -663,7 +668,7 @@ class GNILCModel:
         beta_hdr = self.target_wcs.to_header()
         beta_hdr['COMMENT'] = "Planck GNILC spectral index"
         beta_hdu = fits.PrimaryHDU(data=beta_regrid, header=beta_hdr)
-        beta_hdu.writeto(os.path.join(savedir, "planck-beta.fits"))
+        beta_hdu.writeto(os.path.join(self.default_savedir, "planck-beta.fits"))
         print("Wrote spectral index map to FITS.")
 
     def save_full_mask(self):
@@ -676,7 +681,7 @@ class GNILCModel:
         mask_hdr = self.target_wcs.to_header()
         mask_hdr['COMMENT'] = "Full mask from calc_offset.py"
         mask_hdu = fits.PrimaryHDU(data=self.mask.astype(float), header=mask_hdr)
-        mask_hdu.writeto(os.path.join(savedir, "calib-full-mask.fits"))
+        mask_hdu.writeto(os.path.join(self.default_savedir, "calib-full-mask.fits"))
         print("Wrote full mask to FITS.")
 
 """
