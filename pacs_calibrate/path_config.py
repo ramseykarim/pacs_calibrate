@@ -173,8 +173,6 @@ class PlanckConfig:
         """
         return f"{gnilc_directory}COM_CompMap_Dust-GNILC-Model-{component_stub}_2048_R2.00.fits"
 
-    hfi_rimo = planck_directory + "HFI_RIMO_R3.00.fits"
-
     @staticmethod
     @if_contained_in(hfi_bandpass_stubs)
     def bandpass_profile(bandpass_stub):
@@ -183,7 +181,7 @@ class PlanckConfig:
         :param bandpass_stub: HFI band stub
         :return: arrays: frequency (Hz), weight (arbitrary)
         """
-        with fits_open(PlanckConfig.hfi_rimo) as hdul:
+        with fits_open(f"{planck_directory}HFI_RIMO_R3.00.fits") as hdul:
             # Use extension index i to reference RIMO info
             i = hfi_bandpass_indices[hfi_bandpass_stubs.index(bandpass_stub)]
             # Sanity check!

@@ -129,8 +129,10 @@ class GNILCModel:
         self.default_savedir = default_savedir
         # Basic operations with reusable results
         self.accumulate_planck_masks(save_mask_layer=save_masks)
-        self.accumulate_spire_masks(spire250_filename, spire500_filename,
-            save_mask_layer=save_masks)
+        if spire250_filename is not None and spire500_filename is not None:
+            # Skip this if either is None
+            self.accumulate_spire_masks(spire250_filename, spire500_filename,
+                save_mask_layer=save_masks)
         if save_beta_only:
             self.save_beta_map()
         else:
@@ -704,15 +706,17 @@ def flquantiles(x, q, presorted=False):
     """
     Get values of first and last q-quantiles of x values.
     If x is multi-D, only works if first axis (0) is sample value axis.
+    Removes NaNs from x before any calculation.
     :param x: sample values
     :param q: number of quantiles. Should be >2
     :param presorted: True if x array is already sorted. Could save
         time if running this function multiple time on large x array.
     :return: tuple(first, last) where elements have dtype of x[i]
     """
-    sorted_x = np.sort(x, axis=0) if not presorted else x
-    first_quant = sorted_x[len(x) // q]
-    last_quant = sorted_x[(q-1)*len(x) // q]
+    finite_x = x[np.isfinite(x)]
+    sorted_x = np.sort(finite_x, axis=0) if not presorted else finite_x
+    first_quant = sorted_x[len(finite_x) // q]
+    last_quant = sorted_x[(q-1)*len(finite_x) // q]
     return (first_quant, last_quant)
 
 
